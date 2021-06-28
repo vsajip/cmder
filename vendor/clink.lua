@@ -13,6 +13,34 @@ dofile(clink_lua_file)
 
 -- now add our own things...
 
+
+local function get_uah_color()
+  return uah_color or "\x1b[1;33;40m" -- Green = uah = [user]@[hostname]
+end
+
+local function get_cwd_color()
+  return cwd_color or "\x1b[1;32;40m" -- Yellow cwd = Current Working Directory
+end
+
+local function get_lamb_color()
+  return lamb_color or "\x1b[1;30;40m" -- Light Grey = Lambda Color
+end
+
+
+local function get_clean_color()
+  return clean_color or "\x1b[1;37;40m"
+end
+
+
+local function get_dirty_color()
+  return dirty_color or "\x1b[33;3m"
+end
+
+
+local function get_conflict_color()
+  return conflict_color or "\x1b[31;1m"
+end
+
 ---
 -- Makes a string safe to use as the replacement in string.gsub
 ---
@@ -20,6 +48,16 @@ local function verbatim(s)
     s = string.gsub(s, "%%", "%%%%")
     return s
 end
+
+-- Extracts only the folder name from the input Path
+-- Ex: Input C:\Windows\System32 returns System32
+---
+local function get_folder_name(path)
+  local reversePath = string.reverse(path)
+  local slashIndex = string.find(reversePath, "\\")
+  return string.sub(path, string.len(path) - slashIndex + 2)
+end
+
 
 ---
 -- Setting the prompt in clink means that commands which rewrite the prompt do
@@ -44,17 +82,58 @@ local function set_prompt_filter()
     -- also check for square brackets
     if env == nil then env = old_prompt:match('.*%[([^%]]+)%].+:') end
 
-    -- build our own prompt
-    -- orig: $E[1;32;40m$P$S{git}{hg}$S$_$E[1;30;40m{lamb}$S$E[0m
-    -- color codes: "\x1b[1;37;40m"
-    local cmder_prompt = "\x1b[1;32;40m{cwd} {git}{hg}{svn} \n\x1b[1;39;40m{lamb} \x1b[0m"
-    local lambda = "λ"
-    cmder_prompt = string.gsub(cmder_prompt, "{cwd}", verbatim(cwd))
-
-    if env ~= nil then
-        lambda = "("..env..") "..lambda
+    -- Much of the below was 'borrowed' from https://github.com/AmrEldib/cmder-powerline-prompt
+    -- Symbol displayed for the home dir in the prompt.
+    if not prompt_homeSymbol then
+      prompt_homeSymbol = "~"
     end
-    clink.prompt.value = string.gsub(cmder_prompt, "{lamb}", verbatim(lambda))
+
+    -- Symbol displayed in the new line below the prompt.
+    if not prompt_lambSymbol then
+      prompt_lambSymbol = "λ"
+    end
+
+    if not prompt_type then
+      prompt_type = "full"
+    end
+
+    if prompt_useHomeSymbol == nil then
+      prompt_useHomeSymbol = false
+    end
+
+    if prompt_useUserAtHost == nil then
+      prompt_useUserAtHost = false
+    end
+
+    if prompt_singleLine == nil then
+      prompt_singleLine = false
+    end
+
+    if prompt_type == 'folder' then
+        cwd = get_folder_name(cwd)
+    end
+
+    if prompt_useHomeSymbol and string.find(cwd, clink.get_env("HOME")) then
+        cwd = string.gsub(cwd, clink.get_env("HOME"), prompt_homeSymbol)
+    end
+
+    uah = ''
+    if prompt_useUserAtHost then
+        uah = clink.get_env("USERNAME") .. "@" .. clink.get_env("COMPUTERNAME") .. ' '
+    end
+
+    cr = "\n"
+    if prompt_singleLine then
+      cr = ' '
+    end
+
+    if env ~= nil then env = "("..env..") " else env = "" end
+
+    prompt = get_uah_color() .. "{uah}" .. get_cwd_color() .. "{cwd}{git}{hg}{svn}" .. get_lamb_color() .. cr .. "{lamb} \x1b[0m"
+    prompt = string.gsub(prompt, "{uah}", uah)
+    prompt = string.gsub(prompt, "{cwd}", cwd)
+    prompt = string.gsub(prompt, "{env}", env)
+    clink.prompt.value = string.gsub(prompt, "{lamb}", prompt_lambSymbol)
 end
 
 local function percent_prompt_filter()
@@ -285,15 +364,24 @@ end
 -- @return {bool}
 ---
 local function get_git_status_setting()
-    gitStatusSetting = io.popen("git --no-pager config -l 2>nul")
+    local gitStatusConfig = io.popen("git --no-pager config cmder.status 2>nul")
 
-    for line in gitStatusSetting:lines() do
-        if string.match(line, 'cmder.status=false') or string.match(line, 'cmder.cmdstatus=false') then
-          gitStatusSetting:close()
+    for line in gitStatusConfig:lines() do
+        if string.match(line, 'false') then
+          gitStatusConfig:close()
           return false
         end
     end
-    gitStatusSetting:close()
+
+    local gitCmdStatusConfig = io.popen("git --no-pager config cmder.cmdstatus 2>nul")
+    for line in gitCmdStatusConfig:lines() do
+        if string.match(line, 'false') then
+          gitCmdStatusConfig:close()
+          return false
+        end
+    end
+    gitStatusConfig:close()
+    gitCmdStatusConfig:close()
 
     return true
 end
@@ -302,14 +390,14 @@ local function git_prompt_filter()
 
     -- Colors for git status
     local colors = {
-        clean = "\x1b[1;37;40m",
-        dirty = "\x1b[33;3m",
-        conflict = "\x1b[31;1m"
+        clean = get_clean_color(),
+        dirty = get_dirty_color(),
+        conflict = get_conflict_color()
     }
 
     local git_dir = get_git_dir()
-
-    if get_git_status_setting() then
+    cmderGitStatusOptIn = get_git_status_setting()
+    if cmderGitStatusOptIn then
       if git_dir then
           -- if we're inside of git repo then try to detect current branch
           local branch = get_git_branch(git_dir)
@@ -326,7 +414,7 @@ local function git_prompt_filter()
 
               if gitConflict then
                   color = colors.conflict
-              end 
+              end
 
               clink.prompt.value = string.gsub(clink.prompt.value, "{git}", color.."("..verbatim(branch)..")")
               return false
@@ -347,8 +435,8 @@ local function hg_prompt_filter()
     if hg_dir then
         -- Colors for mercurial status
         local colors = {
-            clean = "\x1b[1;37;40m",
-            dirty = "\x1b[31;1m",
+            clean = get_clean_color(),
+            dirty = get_dirty_color(),
         }
 
         local pipe = io.popen("hg branch 2>&1")
@@ -381,8 +469,8 @@ end
 local function svn_prompt_filter()
     -- Colors for svn status
     local colors = {
-        clean = "\x1b[1;37;40m",
-        dirty = "\x1b[31;1m",
+        clean = get_clean_color(),
+        dirty = get_dirty_color(),
     }
 
     if get_svn_dir() then
@@ -406,24 +494,7 @@ local function svn_prompt_filter()
     return false
 end
 
-local function tilde_match (text, f, l)
-    if text == '~' then
-        clink.add_match(clink.get_env('userprofile'))
-        clink.matches_are_files()
-        return true
-    end
-
-    if text:sub(1, 1) == '~' then
-        clink.add_match(string.gsub(text, "~", clink.get_env('userprofile'), 1))
-        -- second match prevents adding a space so we can look for more matches
-        clink.add_match(string.gsub(text, "~", clink.get_env('userprofile'), 1) .. '+')
-        clink.matches_are_files()
-        return true
-    end
-end
-
 -- insert the set_prompt at the very beginning so that it runs first
-clink.register_match_generator(tilde_match, 1)
 clink.prompt.register_filter(set_prompt_filter, 1)
 clink.prompt.register_filter(hg_prompt_filter, 50)
 clink.prompt.register_filter(git_prompt_filter, 50)
