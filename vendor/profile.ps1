@@ -41,27 +41,31 @@ if(-not $moduleInstallerAvailable -and -not $env:PSModulePath.Contains($CmderMod
 
 $gitVersionVendor = (readVersion -gitPath "$ENV:CMDER_ROOT\vendor\git-for-windows\cmd")
 # write-host "GIT VENDOR: ${gitVersionVendor}"
+if ($gitVersionVendor) {
+  $useGitVersion = $gitVersionVendor
+}
 
 # Get user installed Git Version[s] and Compare with vendored if found.
-foreach ($git in (get-command -ErrorAction SilentlyContinue 'git')) {
-    $gitDir = Split-Path -Path $git.Path
+foreach ($git in (get-command -all -ErrorAction SilentlyContinue 'git')) {
+    $gitItem = get-item $git.path
+    $gitDir = $gitItem.directoryName
     $gitDir = isGitShim -gitPath $gitDir
-    $gitVersionUser = (readVersion -gitPath $gitDir)
-    # write-host "GIT USER: ${gitVersionUser}"
+    $gitVersionUser = $git.version
 
-    $useGitVersion = compare_git_versions -userVersion $gitVersionUser -vendorVersion $gitVersionVendor
-    # write-host "Using GIT Version: ${useGitVersion}"
+    if ($gitVersionVendor -lt $gitVersionUser) {
+      $useGitVersion = $gitVersionUser
+      $gitPathUser = ($gitDir.replace('\cmd', ''))
 
-    # Use user installed Git
-    $gitPathUser = ($gitDir.subString(0,$gitDir.Length - 4))
-    if ($useGitVersion -eq $gitVersionUser) {
-        $ENV:GIT_INSTALL_ROOT = $gitPathUser
-        $ENV:GIT_INSTALL_TYPE = 'USER'
-        break
+      # Use user installed Git
+      # write-host "Using GIT Version: ${useGitVersion}"
+
+      $ENV:GIT_INSTALL_ROOT = $gitPathUser
+      $ENV:GIT_INSTALL_TYPE = 'USER'
+      break
     }
 }
 
-# User vendored Git.
+# Use vendored Git.
 if ($ENV:GIT_INSTALL_ROOT -eq $null -and $gitVersionVendor -ne $null) {
     $ENV:GIT_INSTALL_ROOT = "$ENV:CMDER_ROOT\vendor\git-for-windows"
     $ENV:GIT_INSTALL_TYPE = 'VENDOR'
