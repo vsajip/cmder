@@ -10,7 +10,6 @@ function readVersion($gitPath) {
     if ($gitVersion -match 'git version') {
         ($trash1, $trash2, $gitVersion) = $gitVersion.split(' ', 3)
     } else {
-        pause
         return $null
     }
 
