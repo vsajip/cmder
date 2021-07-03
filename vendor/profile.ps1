@@ -9,12 +9,9 @@ if(!$PSScriptRoot) {
     $PSScriptRoot = Split-Path $Script:MyInvocation.MyCommand.Path
 }
 
-if ($ENV:CMDER_USER_CONFIG) {
-    # write-host "CMDER IS ALSO USING INDIVIDUAL USER CONFIG FROM '$ENV:CMDER_USER_CONFIG'!"
-}
 
 # We do this for Powershell as Admin Sessions because CMDER_ROOT is not beng set.
-if (! $ENV:CMDER_ROOT ) {
+if (-not $ENV:CMDER_ROOT ) {
     if ( $ENV:ConEmuDir ) {
         $ENV:CMDER_ROOT = resolve-path( $ENV:ConEmuDir + "\..\.." )
     } else {
@@ -109,32 +106,28 @@ if (-not (test-path "$ENV:CMDER_ROOT\config\profile.d")) {
   mkdir "$ENV:CMDER_ROOT\config\profile.d"
 }
 
-pushd $ENV:CMDER_ROOT\config\profile.d
+Push-Location $ENV:CMDER_ROOT\config\profile.d
 foreach ($x in Get-ChildItem *.psm1) {
-  # write-host write-host Sourcing $x
   Import-Module $x
 }
 
 foreach ($x in Get-ChildItem *.ps1) {
-  # write-host write-host Sourcing $x
   . $x
 }
-popd
+Pop-Location
 
 # Drop *.ps1 files into "$ENV:CMDER_USER_CONFIG\config\profile.d"
 # to source them at startup.  Requires using cmder.exe /C [cmder_user_root_path] argument
 if ($ENV:CMDER_USER_CONFIG -ne "" -and (test-path "$ENV:CMDER_USER_CONFIG\profile.d")) {
-    pushd $ENV:CMDER_USER_CONFIG\profile.d
+    Push-Location $ENV:CMDER_USER_CONFIG\profile.d
     foreach ($x in Get-ChildItem *.psm1) {
-      # write-host write-host Sourcing $x
       Import-Module $x
     }
 
     foreach ($x in Get-ChildItem *.ps1) {
-      # write-host write-host Sourcing $x
       . $x
     }
-    popd
+    Pop-Location
 }
 
 # Renaming to "config\user_profile.ps1" to "user_profile.ps1" for consistency.
@@ -149,6 +142,8 @@ if (Test-Path $CmderUserProfilePath) {
 }
 
 if ($ENV:CMDER_USER_CONFIG) {
+    write-debug "Including individual user-define CMDER_USER_CONFIG config from '$ENV:CMDER_USER_CONFIG'!"
+
     # Renaming to "$env:CMDER_USER_CONFIG\user-profile.ps1" to "user_profile.ps1" for consistency.
     if (test-path "$env:CMDER_USER_CONFIG\user-profile.ps1") {
       rename-item  "$env:CMDER_USER_CONFIG\user-profile.ps1" user_profile.ps1
@@ -169,14 +164,16 @@ if (! (Test-Path $CmderUserProfilePath) ) {
 
 #
 # Prompt Section
-#   Users should modify their user_profile.ps1 as it will be safe from updates.
+#   !!! Users should modify their user_profile.ps1 as it will be safe from updates.
 #
 
 # Only set the prompt if it is currently set to the default
 # This allows users to configure the prompt in their user_profile.ps1 or config\profile.d\*.ps1
-if ( $(get-command prompt).Definition -match 'PS \$\(\$executionContext.SessionState.Path.CurrentLocation\)\$\(' -and `
-  $(get-command prompt).Definition -match '\(\$nestedPromptLevel \+ 1\)\) ";') {
-
+$PromptName = (get-command prompt).Definition
+if (
+  $PromptName -match 'PS \$\(\$executionContext.SessionState.Path.CurrentLocation\)\$\(' -and
+  $PromptName -match '\(\$nestedPromptLevel \+ 1\)\) ";'
+  ) {
   <#
   This scriptblock runs every time the prompt is returned.
   Explicitly use functions from MS namespace to protect from being overridden in the user session.
@@ -194,16 +191,11 @@ if ( $(get-command prompt).Definition -match 'PS \$\(\$executionContext.SessionS
 
 
   # Once Created these code blocks cannot be overwritten
-  # if (-not $(get-command PrePrompt).Options -match 'Constant') {Set-Item -Path function:\PrePrompt   -Value $PrePrompt   -Options Constant}
-  # if (-not $(get-command CmderPrompt).Options -match 'Constant') {Set-Item -Path function:\CmderPrompt -Value $CmderPrompt -Options Constant}
-  # if (-not $(get-command PostPrompt).Options -match 'Constant') {Set-Item -Path function:\PostPrompt  -Value $PostPrompt  -Options Constant}
-
   Set-Item -Path function:\PrePrompt   -Value $PrePrompt   -Options Constant
   Set-Item -Path function:\CmderPrompt -Value $CmderPrompt -Options Constant
   Set-Item -Path function:\PostPrompt  -Value $PostPrompt  -Options Constant
 
   # Functions can be made constant only at creation time
   # ReadOnly at least requires `-force` to be overwritten
-  # if (!$(get-command Prompt).Options -match 'ReadOnly') {Set-Item -Path function:\prompt  -Value $Prompt  -Options ReadOnly}
   Set-Item -Path function:\prompt  -Value $Prompt  -Options ReadOnly
 }
