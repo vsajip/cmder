@@ -13,24 +13,20 @@ if(!$PSScriptRoot) {
 # We do this for Powershell as Admin Sessions because CMDER_ROOT is not beng set.
 if (-not $ENV:CMDER_ROOT ) {
     if ( $ENV:ConEmuDir ) {
-        $ENV:CMDER_ROOT = resolve-path( $ENV:ConEmuDir + "\..\.." )
+        $ENV:CMDER_ROOT = Join-Path $ENV:ConEmuDir "\..\.." -Resolve
     } else {
-        $ENV:CMDER_ROOT = resolve-path( $PSScriptRoot + "\.." )
+        $ENV:CMDER_ROOT = Join-Path $PSScriptRoot "\.." -Resolve
     }
 }
-
-# Remove trailing '\'
-$ENV:CMDER_ROOT = (($ENV:CMDER_ROOT).trimend("\"))
 
 # Do not load bundled psget if a module installer is already available
 # -> recent PowerShell versions include PowerShellGet out of the box
 $moduleInstallerAvailable = [bool](Get-Command -Name 'Install-Module' -ErrorAction SilentlyContinue)
 
 # Add Cmder modules directory to the autoload path.
-$CmderModulePath = Join-path $PSScriptRoot "psmodules/"
+$CmderModulePath = Join-path $PSScriptRoot "psmodules"
 
-$CmderFunctions =  Join-Path $CmderModulePath "Cmder.ps1"
-. $CmderFunctions
+. (Join-Path $CmderModulePath "Cmder.ps1")
 
 if(-not $moduleInstallerAvailable -and -not $env:PSModulePath.Contains($CmderModulePath) ){
     $env:PSModulePath = $env:PSModulePath.Insert(0, "$CmderModulePath;")
