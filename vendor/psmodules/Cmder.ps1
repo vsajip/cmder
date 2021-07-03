@@ -29,81 +29,43 @@ function isGitShim($gitPath) {
     return $gitPath.toString()
 }
 
-function compareVersions($userVersion, $vendorVersion) {
-    if (-not($userVersion -eq $null)) {
-        ($userMajor, $userMinor, $userPatch, $userBuild) = $userVersion.split('.', 4)
-    } else {
-        return -1
-    }
+function Register-LatestPathCommandVersion([string]$Path, [string]$Command) {
+    <#
+    .SYNOPSIS
+        Set latest git version in $ENV:PATH
+    .DESCRIPTION
+        Check users path and known cmder paths and use the latest version of git.
 
-    if (-not($vendorVersion -eq $null)) {
-        ($vendorMajor, $vendorMinor, $vendorPatch, $vendorBuild) = $vendorVersion.split('.', 4)
-    } else {
-        return 1
-    }
+        Validated in Cmder.tests.ps1
+    #>
 
-    if ($userMajor -gt $vendorMajor) {return 1}
-    if ($userMajor -lt $vendorMajor) {return -1}
+    # Expected locations to test for Git
+    @(
+        "git-for-windows\cmd",
+        # guess if mingw is present and check its git too.
+        "mingw32\bin",
+        "mingw64\bin",
+        # Guess if the user has provided git for some reason
+        "usr\bin"
+    ).foreach({
+            # Resolve relative directories to the path. If the path doesn't exist then eat the error and continue
+            Join-Path $ENV:CMDER_ROOT $psItem -Resolve -ErrorAction SilentlyContinue
+        }).foreach( {
+            $Path = $Path.insert(0, "$psitem;")
+        })
 
-    if ($userMinor -gt $vendorMinor) {return 1}
-    if ($userMinor -lt $vendorMinor) {return -1}
+    [System.Collections.ArrayList]$existingEnv = $Path.split(';')
 
-    if ($userPatch -gt $vendorPatch) {return 1}
-    if ($userPatch -lt $vendorPatch) {return -1}
-
-    if ($userBuild -gt $vendorBuild) {return 1}
-    if ($userBuild -lt $vendorBuild) {return -1}
-
-    return 0
-}
-
-function compare_git_versions($userVersion, $vendorVersion) {
-    $result = compareVersions -userVersion $userVersion -vendorVersion $vendorVersion
-
-    # write-host "Compare Versions Result: ${result}"
-    if ($result -ge 0) {
-        return $userVersion
-    } else {
-        return $vendorVersion
-    }
-}
-
-function Configure-Git($gitRoot, $gitType, $gitPathUser){
-    # Proposed Behavior
-
-    # Modify the path if we are using VENDORED Git do nothing if using USER Git.
-    # If User Git is installed but older match its path config adding paths
-    # in the same path positions allowing a user to configure Cmder Git path
-    # using locally installed Git Path Config.
-    if ($gitType -eq 'VENDOR') {
-        # If User Git is installed replace its path config with Newer Vendored Git Path
-        if ($gitPathUser -ne '' -and $gitPathUser -ne $null) {
-            # write-host "Replacing $gitPathUser with $gitRoot in the path"
-            $gitPathUserEsc = $gitPathUser.replace('\','\\').replace('(','\(').replace(')','\)')
-
-            $newPath = ($env:path -ireplace $gitPathUserEsc, $gitRoot)
-        } else {
-            $gitRootEsc = $gitRoot.replace('\','\\')
-            if (!($env:Path -match "$gitRootEsc\\cmd")) {
-                $newPath = $($gitRoot + "\cmd" + ";" + $env:Path)
-            }
-
-            # Add "$gitRoot\mingw[32|64]\bin" to the path if exists and not done already
-            if ((test-path "$gitRoot\mingw32\bin") -and -not ($env:path -match "$gitRootEsc\\mingw32\\bin")) {
-                $newPath = "$newPath;$gitRoot\mingw32\bin"
-            } elseif ((test-path "$gitRoot\mingw64\bin") -and -not ($env:path -match "$gitRootEsc\\mingw64\\bin")) {
-                $newPath = "$newPath;$gitRoot\mingw64\bin"
-            }
-
-            if ((test-path "$gitRoot\usr\bin") -and -not ($env:path -match "$gitRootEsc\\usr\\bin")) {
-                $newPath = "$newPath;$gitRoot\usr\bin"
-            }
+    # Descending sort all git versions, skip the newest only getting the paths, split off the Command and remove those paths.
+    get-command -all -ErrorAction SilentlyContinue $Command |
+        sort-object Version -Descending |
+        Select-Object -Skip 1 -ExpandProperty Source |
+        Split-Path |
+        ForEach-Object {
+            $existingEnv.Remove($psItem)
         }
 
-        return $newPath
-    }
-
-    return $env:path
+    return $existingEnv -join ';'
 }
 
 function Import-Git(){

@@ -32,45 +32,6 @@ if(-not $moduleInstallerAvailable -and -not $env:PSModulePath.Contains($CmderMod
     $env:PSModulePath = $env:PSModulePath.Insert(0, "$CmderModulePath;")
 }
 
-$gitVersionVendor = (readVersion -gitPath "$ENV:CMDER_ROOT\vendor\git-for-windows\cmd")
-# write-host "GIT VENDOR: ${gitVersionVendor}"
-if ($gitVersionVendor) {
-  $useGitVersion = $gitVersionVendor
-}
-
-# Get user installed Git Version[s] and Compare with vendored if found.
-foreach ($git in (get-command -all -ErrorAction SilentlyContinue 'git')) {
-    $gitItem = get-item $git.path
-    $gitDir = $gitItem.directoryName
-    $gitDir = isGitShim -gitPath $gitDir
-    $gitVersionUser = $git.version
-
-    if ($gitVersionVendor -lt $gitVersionUser) {
-      $useGitVersion = $gitVersionUser
-      $gitPathUser = ($gitDir.replace('\cmd', ''))
-
-      # Use user installed Git
-      # write-host "Using GIT Version: ${useGitVersion}"
-
-      $ENV:GIT_INSTALL_ROOT = $gitPathUser
-      $ENV:GIT_INSTALL_TYPE = 'USER'
-      break
-    }
-}
-
-# Use vendored Git.
-if ($ENV:GIT_INSTALL_ROOT -eq $null -and $gitVersionVendor -ne $null) {
-    $ENV:GIT_INSTALL_ROOT = "$ENV:CMDER_ROOT\vendor\git-for-windows"
-    $ENV:GIT_INSTALL_TYPE = 'VENDOR'
-}
-
-# write-host "GIT_INSTALL_ROOT: ${ENV:GIT_INSTALL_ROOT}"
-# write-host "GIT_INSTALL_TYPE: ${ENV:GIT_INSTALL_TYPE}"
-
-if (-not($ENV:GIT_INSTALL_ROOT -eq $null)) {
-    $env:Path = Configure-Git -gitRoot "$ENV:GIT_INSTALL_ROOT" -gitType $ENV:GIT_INSTALL_TYPE -gitPathUser $gitPathUser
-}
-
 if ( Get-command -Name "vim" -ErrorAction silentlycontinue) {
     new-alias -name "vi" -value vim
 }
@@ -78,6 +39,8 @@ if ( Get-command -Name "vim" -ErrorAction silentlycontinue) {
 if (Get-Module PSReadline -ErrorAction "SilentlyContinue") {
     Set-PSReadlineOption -ExtraPromptLineCount 1
 }
+
+$env:path = Register-LatestPathCommandVersion -Path $env:Path -Command 'git'
 
 # Pre assign default prompt hooks so the first run of cmder gets a working prompt.
 $env:gitLoaded = $false
